@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HW2 Trace Viewer + Open Coding</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+  h1 { color: #fff; margin-bottom: 20px; font-size: 1.4em; }
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .nav button { padding: 8px 16px; border: 1px solid #333; background: #16213e; color: #e0e0e0; border-radius: 6px; cursor: pointer; font-size: 0.85em; }
+  .nav button.active { background: #0f3460; border-color: #e94560; color: #fff; }
+  .nav button.has-notes { border-color: #22c55e; }
+  .card { background: #16213e; border-radius: 10px; padding: 24px; margin-bottom: 20px; }
+  .query-label { color: #e94560; font-weight: 600; font-size: 0.8em; text-transform: uppercase; letter-spacing: 1px; }
+  .query-text { font-size: 1.1em; margin: 8px 0 20px; color: #fff; font-style: italic; }
+  .response-label { color: #0ea5e9; font-weight: 600; font-size: 0.8em; text-transform: uppercase; letter-spacing: 1px; }
+  .response-text { margin-top: 8px; line-height: 1.7; white-space: pre-wrap; font-size: 0.95em; }
+  .notes-section { background: #0f3460; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  .notes-label { color: #22c55e; font-weight: 600; font-size: 0.8em; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .notes-area { width: 100%; min-height: 100px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px; color: #e0e0e0; padding: 12px; font-family: inherit; font-size: 0.9em; line-height: 1.5; resize: vertical; }
+  .notes-area:focus { outline: none; border-color: #22c55e; }
+  .notes-hint { color: #666; font-size: 0.75em; margin-top: 6px; }
+  .counter { color: #888; font-size: 0.85em; margin-bottom: 10px; }
+  .upload-area { border: 2px dashed #333; border-radius: 10px; padding: 40px; text-align: center; margin-bottom: 20px; }
+  .toolbar { display: flex; gap: 10px; margin-bottom: 20px; }
+  .toolbar button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85em; font-weight: 600; }
+  .btn-export { background: #22c55e; color: #000; }
+  .btn-export:hover { background: #16a34a; }
+  .btn-clear { background: #333; color: #e0e0e0; }
+  .btn-prev, .btn-next { background: #0f3460; color: #fff; border: 1px solid #333; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<h1>HW2 Trace Viewer + Open Coding</h1>
+
+<div id="upload-area" class="upload-area">
+  <p>Upload your <code>traces_hw2.jsonl</code> file</p>
+  <input type="file" id="file-input" accept=".jsonl,.json">
+</div>
+
+<div id="viewer" style="display:none;">
+  <div class="toolbar">
+    <button class="btn-prev" onclick="show(current-1)">&larr; Prev</button>
+    <button class="btn-next" onclick="show(current+1)">Next &rarr;</button>
+    <button class="btn-export" onclick="exportNotes()">Export Notes as CSV</button>
+  </div>
+  <div class="counter" id="counter"></div>
+  <div class="nav" id="nav"></div>
+  
+  <div class="notes-section">
+    <div class="notes-label">Open Code Notes</div>
+    <textarea class="notes-area" id="notes" placeholder="What do you observe? Any failures, patterns, or issues with this response?"></textarea>
+    <div class="notes-hint">Notes auto-save as you type. Green border on nav = has notes. Export all as CSV when done.</div>
+  </div>
+
+  <div class="card" id="card"></div>
+</div>
+
+<script>
+let traces = [];
+let notes = {};
+let current = 0;
+
+document.getElementById('file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const text = ev.target.result.trim();
+    try { traces = JSON.parse(text); } catch { traces = text.split('\n').filter(l => l.trim()).map(l => JSON.parse(l)); }
+    document.getElementById('upload-area').style.display = 'none';
+    document.getElementById('viewer').style.display = 'block';
+    buildNav();
+    show(0);
+  };
+  reader.readAsText(file);
+});
+
+document.getElementById('notes').addEventListener('input', (e) => {
+  notes[traces[current].id] = e.target.value;
+  updateNavStyles();
+});
+
+function buildNav() {
+  const nav = document.getElementById('nav');
+  nav.innerHTML = '';
+  traces.forEach((t, i) => {
+    const btn = document.createElement('button');
+    btn.textContent = t.id;
+    btn.onclick = () => show(i);
+    btn.id = 'nav-' + t.id;
+    nav.appendChild(btn);
+  });
+}
+
+function updateNavStyles() {
+  traces.forEach((t, j) => {
+    const btn = document.getElementById('nav-' + t.id);
+    btn.classList.toggle('has-notes', !!(notes[t.id] && notes[t.id].trim()));
+    btn.classList.toggle('active', j === current);
+  });
+}
+
+function show(i) {
+  if (i < 0 || i >= traces.length) return;
+  current = i;
+  const t = traces[i];
+  document.getElementById('counter').textContent = `${i + 1} of ${traces.length}`;
+  document.getElementById('card').innerHTML = `
+    <div class="query-label">User Query</div>
+    <div class="query-text">"${t.query}"</div>
+    <div class="response-label">Bot Response</div>
+    <div class="response-text">${t.response}</div>
+  `;
+  document.getElementById('notes').value = notes[t.id] || '';
+  updateNavStyles();
+}
+
+function exportNotes() {
+  let csv = 'id,query,open_code_notes\n';
+  traces.forEach(t => {
+    const q = '"' + t.query.replace(/"/g, '""') + '"';
+    const n = '"' + (notes[t.id] || '').replace(/"/g, '""') + '"';
+    csv += `${t.id},${q},${n}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'hw2_open_codes.csv';
+  a.click();
+}
+</script>
+</body>
+</html>
